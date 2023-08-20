@@ -57,7 +57,6 @@ func main() {
 	defer logger.Sync()
 
 	var templateContext TemplateContext
-	templateContext.KubeNamespace = "default"
 
 	t, err := template.New("out").Parse(args.Template)
 	if err != nil {
@@ -117,6 +116,7 @@ func loadKubeInfo(templateContext *TemplateContext) error {
 		return fmt.Errorf("failed to close kube config: %w", err)
 	}
 
+	templateContext.KubeNamespace = "default"
 	if kubeConfig.CurrentContext != "" {
 		templateContext.KubeContext = kubeConfig.CurrentContext
 		for _, context := range kubeConfig.Contexts {
