@@ -1,17 +1,23 @@
 package main
 
 import (
+	"errors"
 	"flag"
+	"fmt"
+	"github.com/go-git/go-git/v5"
 	"github.com/itzg/go-flagsfiller"
+	"github.com/itzg/zapconfigs"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 	"html/template"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 type Args struct {
-	Template string `default:"{{.KubeNamespace}}@{{.KubeContext}}"`
+	Template string `usage:"Go template that can reference\n- KubeNamespace\n- KubeContext\n- CurrentDirectory\n- CompactCurrentDirectory\n- GitBranch\n" default:"{{.KubeNamespace}}@{{.KubeContext}}"`
 }
 
 type KubeConfig struct {
@@ -34,40 +40,82 @@ type TemplateContext struct {
 
 	KubeNamespace string
 	KubeContext   string
+
+	GitBranch string
 }
 
 func main() {
 	var args Args
-	filler := flagsfiller.New()
-	err := filler.Fill(flag.CommandLine, &args)
+	err := flagsfiller.Parse(&args)
 	if err != nil {
 		log.Fatal(err)
 	}
 	flag.Parse()
 
+	logger := zapconfigs.NewDefaultLogger()
+	//goland:noinspection GoUnhandledErrorResult
+	defer logger.Sync()
+
+	var templateContext TemplateContext
+	templateContext.KubeNamespace = "default"
+
+	t, err := template.New("out").Parse(args.Template)
+	if err != nil {
+		logger.Fatal("Invalid output template", zap.Error(err), zap.String("template", args.Template))
+	}
+
+	err = loadKubeInfo(&templateContext)
+	if err != nil {
+		logger.Fatal("Failed loading kube config", zap.Error(err))
+	}
+
+	err = loadCurrentDirectory(&templateContext)
+	if err != nil {
+		logger.Fatal("Failed loading directory info", zap.Error(err))
+	}
+
+	templateContext.GitBranch, err = loadGitBranch(templateContext.CurrentDirectory)
+	if err != nil {
+		logger.Fatal("Failed loading git info", zap.Error(err))
+	}
+
+	err = t.Execute(os.Stdout, templateContext)
+	if err != nil {
+		logger.Fatal("Executing template", zap.Error(err))
+	}
+}
+
+func loadCurrentDirectory(templateContext *TemplateContext) error {
+	var err error
+	templateContext.CurrentDirectory, err = os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current working directory: %w", err)
+	}
+	templateContext.CompactCurrentDirectory = buildCompactCurrentDirectory(templateContext.CurrentDirectory)
+
+	return nil
+}
+
+func loadKubeInfo(templateContext *TemplateContext) error {
 	kubeConfigFile, err := os.Open(getHomeDir() + "/.kube/config")
 	if err != nil {
 		if os.IsNotExist(err) {
-			println("<none>")
-			os.Exit(0)
+			return nil
 		}
-		log.Fatal("Reading kube config", err)
+		return fmt.Errorf("failed to open kube config file: %w", err)
 	}
 
 	var kubeConfig KubeConfig
 	decoder := yaml.NewDecoder(kubeConfigFile)
 	err = decoder.Decode(&kubeConfig)
 	if err != nil {
-		log.Fatal("Decoding kube config", err)
+		return fmt.Errorf("failed to decode kube config: %w", err)
 	}
 
 	err = kubeConfigFile.Close()
 	if err != nil {
-		log.Fatal("Closing kube config", err)
+		return fmt.Errorf("failed to close kube config: %w", err)
 	}
-
-	var templateContext TemplateContext
-	templateContext.KubeNamespace = "default"
 
 	if kubeConfig.CurrentContext != "" {
 		templateContext.KubeContext = kubeConfig.CurrentContext
@@ -80,20 +128,42 @@ func main() {
 		}
 	}
 
-	t, err := template.New("out").Parse(args.Template)
-	if err != nil {
-		log.Fatal("Parsing output template", err)
-	}
+	return nil
+}
 
-	templateContext.CurrentDirectory, err = os.Getwd()
-	if err != nil {
-		log.Fatal("Getting current working directory")
-	}
-	templateContext.CompactCurrentDirectory = buildCompactCurrentDirectory(templateContext.CurrentDirectory)
+func loadGitBranch(currentDirectory string) (string, error) {
 
-	err = t.Execute(os.Stdout, templateContext)
+	repo, err := findRepoDir(currentDirectory)
 	if err != nil {
-		log.Fatal("Executing template", err)
+		return "", fmt.Errorf("failed to open repo: %w", err)
+	} else if repo != nil {
+		head, err := repo.Head()
+		if err != nil {
+			return "", fmt.Errorf("failed to get repo head: %w", err)
+		}
+		return head.Name().Short(), nil
+	} else {
+		return "", nil
+	}
+}
+
+func findRepoDir(currentDirectory string) (*git.Repository, error) {
+	dir := currentDirectory
+	for {
+		repo, err := git.PlainOpen(dir)
+		if err != nil {
+			if !errors.Is(err, git.ErrRepositoryNotExists) {
+				return nil, fmt.Errorf("failed to open repo: %w", err)
+			}
+		} else {
+			return repo, nil
+		}
+
+		dir = filepath.Dir(dir)
+		// only root path ends with separator, see https://pkg.go.dev/path/filepath@go1.21.0#Dir
+		if strings.HasSuffix(dir, string(filepath.Separator)) {
+			return nil, nil
+		}
 	}
 }
 
