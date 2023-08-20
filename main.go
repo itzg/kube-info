@@ -1,11 +1,18 @@
 package main
 
 import (
-	"fmt"
+	"flag"
+	"github.com/itzg/go-flagsfiller"
 	"gopkg.in/yaml.v3"
+	"html/template"
 	"log"
 	"os"
+	"strings"
 )
+
+type Args struct {
+	Template string `default:"{{.KubeNamespace}}@{{.KubeContext}}"`
+}
 
 type KubeConfig struct {
 	Contexts       []Context
@@ -21,7 +28,23 @@ type Context struct {
 	Details ContextDetails `yaml:"context"`
 }
 
+type TemplateContext struct {
+	CurrentDirectory        string
+	CompactCurrentDirectory string
+
+	KubeNamespace string
+	KubeContext   string
+}
+
 func main() {
+	var args Args
+	filler := flagsfiller.New()
+	err := filler.Fill(flag.CommandLine, &args)
+	if err != nil {
+		log.Fatal(err)
+	}
+	flag.Parse()
+
 	kubeConfigFile, err := os.Open(getHomeDir() + "/.kube/config")
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -43,19 +66,41 @@ func main() {
 		log.Fatal("Closing kube config", err)
 	}
 
+	var templateContext TemplateContext
+	templateContext.KubeNamespace = "default"
+
 	if kubeConfig.CurrentContext != "" {
+		templateContext.KubeContext = kubeConfig.CurrentContext
 		for _, context := range kubeConfig.Contexts {
 			if context.Name == kubeConfig.CurrentContext {
-				ns := "default"
 				if context.Details.Namespace != "" {
-					ns = context.Details.Namespace
+					templateContext.KubeNamespace = context.Details.Namespace
 				}
-				fmt.Printf("%s@%s\n", ns, kubeConfig.CurrentContext)
-				return
 			}
 		}
 	}
-	fmt.Println("<unknown>")
+
+	t, err := template.New("out").Parse(args.Template)
+	if err != nil {
+		log.Fatal("Parsing output template", err)
+	}
+
+	templateContext.CurrentDirectory, err = os.Getwd()
+	if err != nil {
+		log.Fatal("Getting current working directory")
+	}
+	templateContext.CompactCurrentDirectory = buildCompactCurrentDirectory(templateContext.CurrentDirectory)
+
+	err = t.Execute(os.Stdout, templateContext)
+	if err != nil {
+		log.Fatal("Executing template", err)
+	}
+}
+
+func buildCompactCurrentDirectory(directory string) (result string) {
+	homeDir := getHomeDir()
+	result = strings.Replace(directory, homeDir, "~", 1)
+	return
 }
 
 func getHomeDir() string {
