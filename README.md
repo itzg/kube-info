@@ -17,7 +17,7 @@ scoop install kube-info
         - KubeNamespace
         - KubeContext
         - CurrentDirectory
-        - CompactCurrentDirectory
+        - CurrentDirectoryCompact
         - GitBranch
          (default "{{.KubeNamespace}}@{{.KubeContext}}")
 ```
@@ -30,6 +30,6 @@ In `$PROFILE` add:
 
 ```ps1
 function prompt {
-    kube-info -template "{{.CompactCurrentDirectory}} [{{.KubeNamespace}}@{{.KubeContext}}]{{if .GitBranch}} {{.GitBranch}}{{end}} > "
+    kube-info -template "{{.CurrentDirectoryCompact}} [{{.KubeNamespace}}@{{.KubeContext}}]{{if .GitBranch}} {{.GitBranch}}{{end}} > "
 }
 ```

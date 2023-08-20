@@ -17,7 +17,7 @@ import (
 )
 
 type Args struct {
-	Template string `usage:"Go template that can reference\n- KubeNamespace\n- KubeContext\n- CurrentDirectory\n- CompactCurrentDirectory\n- GitBranch\n" default:"{{.KubeNamespace}}@{{.KubeContext}}"`
+	Template string `usage:"Go template that can reference\n- KubeNamespace\n- KubeContext\n- CurrentDirectory\n- CurrentDirectoryCompact\n- GitBranch\n" default:"{{.KubeNamespace}}@{{.KubeContext}}"`
 }
 
 type KubeConfig struct {
@@ -36,7 +36,7 @@ type Context struct {
 
 type TemplateContext struct {
 	CurrentDirectory        string
-	CompactCurrentDirectory string
+	CurrentDirectoryCompact string
 
 	KubeNamespace string
 	KubeContext   string
@@ -90,7 +90,7 @@ func loadCurrentDirectory(templateContext *TemplateContext) error {
 	if err != nil {
 		return fmt.Errorf("failed to get current working directory: %w", err)
 	}
-	templateContext.CompactCurrentDirectory = buildCompactCurrentDirectory(templateContext.CurrentDirectory)
+	templateContext.CurrentDirectoryCompact = buildCompactCurrentDirectory(templateContext.CurrentDirectory)
 
 	return nil
 }
