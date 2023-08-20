@@ -1,4 +1,4 @@
-project_name: kube-info
+project_name: prompt-info
 before:
   hooks:
     # You may remove this if you don't use go modules.

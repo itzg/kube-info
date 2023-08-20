@@ -1,4 +1,4 @@
-module kube-info
+module github.com/itzg/prompt-info
 
 go 1.20
 

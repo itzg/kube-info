@@ -17,7 +17,8 @@ import (
 )
 
 type Args struct {
-	Template string `usage:"Go template that can reference\n- KubeNamespace\n- KubeContext\n- CurrentDirectory\n- CurrentDirectoryCompact\n- GitBranch\n" default:"{{.KubeNamespace}}@{{.KubeContext}}"`
+	Template string   `usage:"Go template that can reference\n- KubeNamespace\n- KubeContext\n- CurrentDirectory\n- CurrentDirectoryCompact\n- GitBranch\n" default:"{{.KubeNamespace}}@{{.KubeContext}}"`
+	Modules  []string `usage:"Comma separated list of modules to enable. Can be\n- dir\n- git\n- kube\n" default:"dir,git,kube"`
 }
 
 type KubeConfig struct {
@@ -63,25 +64,40 @@ func main() {
 		logger.Fatal("Invalid output template", zap.Error(err), zap.String("template", args.Template))
 	}
 
-	err = loadKubeInfo(&templateContext)
-	if err != nil {
-		logger.Fatal("Failed loading kube config", zap.Error(err))
+	if moduleEnabled(args.Modules, "kube") {
+		err = loadKubeInfo(&templateContext)
+		if err != nil {
+			logger.Fatal("Failed loading kube config", zap.Error(err))
+		}
 	}
 
-	err = loadCurrentDirectory(&templateContext)
-	if err != nil {
-		logger.Fatal("Failed loading directory info", zap.Error(err))
+	if moduleEnabled(args.Modules, "dir") {
+		err = loadCurrentDirectory(&templateContext)
+		if err != nil {
+			logger.Fatal("Failed loading directory info", zap.Error(err))
+		}
 	}
 
-	templateContext.GitBranch, err = loadGitBranch(templateContext.CurrentDirectory)
-	if err != nil {
-		logger.Fatal("Failed loading git info", zap.Error(err))
+	if moduleEnabled(args.Modules, "git") {
+		err = loadGitInfo(templateContext.CurrentDirectory, &templateContext)
+		if err != nil {
+			logger.Fatal("Failed loading git info", zap.Error(err))
+		}
 	}
 
 	err = t.Execute(os.Stdout, templateContext)
 	if err != nil {
 		logger.Fatal("Executing template", zap.Error(err))
 	}
+}
+
+func moduleEnabled(enabledModules []string, module string) bool {
+	for _, s := range enabledModules {
+		if s == module {
+			return true
+		}
+	}
+	return false
 }
 
 func loadCurrentDirectory(templateContext *TemplateContext) error {
@@ -131,20 +147,19 @@ func loadKubeInfo(templateContext *TemplateContext) error {
 	return nil
 }
 
-func loadGitBranch(currentDirectory string) (string, error) {
+func loadGitInfo(currentDirectory string, templateContext *TemplateContext) error {
 
 	repo, err := findRepoDir(currentDirectory)
 	if err != nil {
-		return "", fmt.Errorf("failed to open repo: %w", err)
+		return fmt.Errorf("failed to open repo: %w", err)
 	} else if repo != nil {
 		head, err := repo.Head()
 		if err != nil {
-			return "", fmt.Errorf("failed to get repo head: %w", err)
+			return fmt.Errorf("failed to get repo head: %w", err)
 		}
-		return head.Name().Short(), nil
-	} else {
-		return "", nil
+		templateContext.GitBranch = head.Name().Short()
 	}
+	return nil
 }
 
 func findRepoDir(currentDirectory string) (*git.Repository, error) {
