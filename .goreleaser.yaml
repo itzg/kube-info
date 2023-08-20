@@ -1,11 +1,8 @@
-# This is an example .goreleaser.yml file with some sensible defaults.
-# Make sure to check the documentation at https://goreleaser.com
+project_name: kube-info
 before:
   hooks:
     # You may remove this if you don't use go modules.
     - go mod tidy
-    # you may remove this if you don't need go generate
-    - go generate ./...
 builds:
   - env:
       - CGO_ENABLED=0
@@ -38,6 +35,14 @@ changelog:
     exclude:
       - '^docs:'
       - '^test:'
+scoops:
+  - repository:
+      owner: itzg
+      name: scoop-bucket
+      token: "{{ .Env.SCOOP_GITHUB_TOKEN }}"
+    folder: bucket
+    license: Apache2
+    description: Enables REST-like access to HTML pages by scraping and parsing them into JSON
 
 # The lines beneath this are called `modelines`. See `:help modeline`
 # Feel free to remove those if you don't want/use them.
