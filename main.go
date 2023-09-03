@@ -155,6 +155,10 @@ func loadGitInfo(currentDirectory string, templateContext *TemplateContext) erro
 	} else if repo != nil {
 		head, err := repo.Head()
 		if err != nil {
+			if err.Error() == "reference not found" {
+				templateContext.GitBranch = "no-ref"
+				return nil
+			}
 			return fmt.Errorf("failed to get repo head: %w", err)
 		}
 		templateContext.GitBranch = head.Name().Short()
